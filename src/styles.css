@@ -30,3 +30,26 @@ nav { display: grid; gap: 4px; }.nav-item { display: flex; align-items: center; 
 /* Emerald primary system: user-selected #059669 replaces the lavender accent. */
 .category-work select, .category-study select { border-color: rgba(5,150,105,.48); color: #a7f3d0; background: rgba(5,150,105,.15); }
 .ai-icon { border-color: rgba(5,150,105,.48); background: rgba(5,150,105,.15); color: #a7f3d0; }
+
+/* Larger desktop reading scale. */
+.brand { font-size: 20px; }
+.workspace-label, .eyebrow, .date-row label { font-size: 12px; }
+.nav-item { font-size: 16px; padding-block: 13px; }
+.privacy-note, .help { font-size: 13px; }
+.window-bar { font-size: 12px; }
+.local-status { font-size: 11px; padding: 6px 12px; }
+.topbar h1 { font-size: 36px; line-height: 44px; }
+.topbar p { font-size: 16px; line-height: 26px; }
+.baseline-note { font-size: 14px; }
+.balance-card strong, .section-head p { font-size: 14px; line-height: 22px; }
+.balance-legend { font-size: 11px; }
+.section-head h2, .review-panel h2 { font-size: 20px; line-height: 28px; }
+.ghost-button, .secondary-button, .primary-button { font-size: 14px; padding: 11px 16px; }
+.timeline-header { font-size: 11px; }
+.block-row { min-height: 70px; }
+.time-inputs input { font-size: 13px; padding-block: 9px; }
+.activity-input { font-size: 15px; padding-block: 10px; }
+.select-wrap select { font-size: 12px; padding-block: 9px; }
+.review-empty p, .review-result { font-size: 15px; line-height: 24px; }
+.review-empty span { font-size: 13px; }
+.review-footer { font-size: 11px; }
