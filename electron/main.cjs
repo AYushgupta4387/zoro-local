@@ -58,7 +58,7 @@ app.whenReady().then(() => {
     } catch { return { online: false, modelReady: false } }
   })
   ipcMain.handle('ollama:review-plan', async (_, plan) => {
-    const prompt = `You are Zoro Local, a calm offline personal planning assistant. The user owns their plan. Review it without changing it. Identify only concrete schedule conflicts, missing transitions, missing meals/rest, overload, and lack of buffer. Offer at most three optional suggestions. Do not use guilt, diagnosis, or productivity scores. Return plain text with a one-sentence summary and bullets.\n\nDate: ${plan.date}\nSchedule:\n${plan.blocks.map((block) => `${block.start}-${block.end}: ${block.title} (${block.category})`).join('\n')}`
+    const prompt = `You are Zoro Local, a calm offline personal planning assistant. The user owns their plan. Review it without changing it. Identify only concrete schedule conflicts, missing transitions, missing meals/rest, overload, and lack of buffer. A block whose start and end time are equal is a point-in-time marker, such as waking up; never call it an overlap. Offer at most three optional suggestions. Do not use guilt, diagnosis, productivity scores, Markdown, or headings. Return one plain-text summary sentence followed by at most four observation bullets and at most three suggestion bullets.\n\nDate: ${plan.date}\nSchedule:\n${plan.blocks.map((block) => `${block.start}-${block.end}: ${block.title} (${block.category})`).join('\n')}`
     const data = await ollamaRequest('/api/chat', { model, stream: false, messages: [{ role: 'user', content: prompt }] })
     return data.message.content
   })

@@ -75,7 +75,7 @@ function App() {
         <aside className="review-panel"><div className="review-title"><span className="ai-icon"><Sparkles size={16} /></span><div><span className="eyebrow">LOCAL AI REVIEW</span><h2>Observations, not orders</h2></div></div>
           {reviewing && <div className="review-empty"><LoaderCircle className="spin" size={22} /><p>Qwen is checking your plan locally.</p></div>}
           {!reviewing && !review && <div className="review-empty"><Sparkles size={22} /><p>When you are ready, Zoro can check for overlaps, missing transitions, breaks, and realistic buffers.</p><span>It will not change your plan.</span></div>}
-          {!reviewing && review && <div className="review-result">{review.split('\n').filter(Boolean).map((line, index) => <p key={index}>{line}</p>)}</div>}
+          {!reviewing && review && <div className="review-result">{review.split('\n').filter(Boolean).map((line, index) => <p key={index}>{line.replace(/\*\*/g, '')}</p>)}</div>}
           <div className="review-footer"><span className="status-dot" /> Runs on your laptop with Qwen3 8B</div>
         </aside>
       </section>
