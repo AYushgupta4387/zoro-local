@@ -4,6 +4,7 @@ const path = require('path')
 
 const model = 'qwen3:8b'
 const ollamaUrl = 'http://127.0.0.1:11434'
+const categories = ['Routine', 'Work', 'Study', 'Health', 'Personal', 'Travel', 'Rest']
 
 function storeFile() { return path.join(app.getPath('userData'), 'zoro-data.json') }
 function voiceDir() { return path.join(app.getPath('userData'), 'voice') }
@@ -80,6 +81,15 @@ app.whenReady().then(() => {
   ipcMain.handle('ollama:review-plan', async (_, plan) => {
     const prompt = `You are Zoro Local, a calm offline personal planning assistant. The user owns their plan. Review it without changing it. Identify only concrete schedule conflicts, missing transitions, missing meals/rest, overload, and lack of buffer. A block whose start and end time are equal is a point-in-time marker; never call it an overlap. Offer at most three optional suggestions. Do not use guilt, diagnosis, productivity scores, Markdown, or headings. Return one plain-text summary sentence followed by at most four observation bullets and at most three suggestion bullets.\n\nDate: ${plan.date}\nSchedule:\n${plan.blocks.map((block) => `${block.start}-${block.end}: ${block.title} (${block.category})`).join('\n')}`
     return (await ollamaRequest('/api/chat', { model, stream: false, think: false, messages: [{ role: 'user', content: prompt }] })).message.content
+  })
+  ipcMain.handle('ollama:generate-plan', async (_, { date }) => {
+    const prompt = `Create one illustrative, realistic, and varied personal day plan for ${date}. This is a draft for the user to edit, not an instruction. Include 7 to 10 non-overlapping blocks, meal/rest time, and some open space. Use 24-hour HH:MM times. Allowed categories: Routine, Work, Study, Health, Personal, Travel, Rest. Return JSON only in this exact shape: {"blocks":[{"start":"07:00","end":"07:30","title":"Wake up and freshen up","category":"Routine"}]}. Do not include text outside the JSON.`
+    const content = (await ollamaRequest('/api/chat', { model, stream: false, think: false, format: 'json', options: { temperature: 1.1 }, messages: [{ role: 'user', content: prompt }] })).message.content
+    const parsed = cleanJson(content); const source = Array.isArray(parsed) ? parsed : parsed.blocks
+    if (!Array.isArray(source) || source.length === 0) throw new Error('The local model did not return usable plan blocks.')
+    const blocks = source.map((block) => ({ id: crypto.randomUUID(), start: String(block.start ?? ''), end: String(block.end ?? ''), title: String(block.title ?? '').trim(), category: categories.includes(block.category) ? block.category : 'Personal' }))
+    if (blocks.some((block) => !/^\d{2}:\d{2}$/.test(block.start) || !/^\d{2}:\d{2}$/.test(block.end) || !block.title)) throw new Error('The local model returned an invalid time block.')
+    return blocks.sort((a, b) => a.start.localeCompare(b.start))
   })
   ipcMain.handle('ollama:parse-update', async (_, { text, blocks }) => {
     const prompt = `Extract a factual activity update into JSON only. Never invent times or completion. Valid outcomes: Completed, Partially Completed, In Progress, Skipped, Unknown. Choose taskTitle from the schedule when a clear match exists, else use the user's phrase. Return {"taskTitle":"string","outcome":"string","minutes":number|null,"blocker":"string|null","summary":"string"}. If duration is not explicit use null.\n\nSchedule: ${blocks.map((b) => b.title).join(', ')}\nUser update: ${text}`

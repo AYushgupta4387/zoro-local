@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('zoro', {
   saveJournal: (payload) => ipcRenderer.invoke('planner:save-journal', payload),
   checkOllama: () => ipcRenderer.invoke('ollama:status'),
   reviewPlan: (plan) => ipcRenderer.invoke('ollama:review-plan', plan),
+  generatePlan: (payload) => ipcRenderer.invoke('ollama:generate-plan', payload),
   parseUpdate: (payload) => ipcRenderer.invoke('ollama:parse-update', payload),
   makeJournal: (payload) => ipcRenderer.invoke('ollama:journal', payload),
   saveVoice: (payload) => ipcRenderer.invoke('voice:save', payload)

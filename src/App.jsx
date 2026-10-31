@@ -1,14 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BarChart3, CalendarDays, Check, ChevronDown, CircleHelp, Clock3, FileText, GripVertical, LayoutDashboard, LoaderCircle, Mic, Plus, Send, Sparkles, Square, TerminalSquare, X } from 'lucide-react'
 
-const defaultBlocks = [
-  { id: 'wake', start: '07:00', end: '07:00', title: 'Wake up', category: 'Routine' },
-  { id: 'freshen', start: '07:00', end: '07:30', title: 'Freshen up', category: 'Routine' },
-  { id: 'exercise', start: '07:30', end: '08:30', title: 'Exercise', category: 'Health' },
-  { id: 'breakfast', start: '08:30', end: '09:30', title: 'Breakfast and rest', category: 'Rest' },
-  { id: 'travel-office', start: '09:30', end: '10:00', title: 'Travel to office', category: 'Travel' },
-  { id: 'office', start: '10:00', end: '18:00', title: 'Office', category: 'Work' }
-]
 const categories = ['Routine', 'Work', 'Study', 'Health', 'Personal', 'Travel', 'Rest']
 const dateForInput = (days = 1) => { const date = new Date(); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10) }
 const minutesLabel = (value) => value == null ? 'Time not recorded' : `${value} min recorded`
@@ -17,19 +9,19 @@ const cleanText = (text) => text.replace(/\*\*/g, '').replace(/^[-•]\s*/, '')
 function App() {
   const [view, setView] = useState('plan')
   const [date, setDate] = useState(dateForInput())
-  const [blocks, setBlocks] = useState(defaultBlocks)
+  const [blocks, setBlocks] = useState([])
   const [plan, setPlan] = useState(null)
   const [plans, setPlans] = useState([])
   const [status, setStatus] = useState({ loading: true, online: false, modelReady: false })
   const [review, setReview] = useState('')
   const [reviewing, setReviewing] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [saved, setSaved] = useState(false)
   const [notice, setNotice] = useState('')
 
   async function refresh(selectedDate = date) {
     const [savedPlan, allPlans, modelStatus] = await Promise.all([window.zoro.getPlan(selectedDate), window.zoro.listPlans(), window.zoro.checkOllama()])
-    setPlan(savedPlan); setPlans(allPlans); setStatus({ loading: false, ...modelStatus })
-    if (savedPlan?.baselineBlocks) setBlocks(savedPlan.baselineBlocks)
+    setPlan(savedPlan); setPlans(allPlans); setStatus({ loading: false, ...modelStatus }); setBlocks(savedPlan?.baselineBlocks ?? []); setReview(''); setSaved(false)
   }
   useEffect(() => { refresh() }, [])
   useEffect(() => { refresh(date) }, [date])
@@ -41,12 +33,13 @@ function App() {
   function removeBlock(id) { setBlocks((current) => current.filter((block) => block.id !== id)) }
   async function savePlan() { await window.zoro.savePlan({ date, blocks: sortedBlocks }); setSaved(true); setNotice('Baseline saved locally.'); await refresh(); setTimeout(() => setSaved(false), 2500) }
   async function getReview() { setReviewing(true); setReview(''); try { setReview(await window.zoro.reviewPlan({ date, blocks: sortedBlocks })) } catch (error) { setReview(`I could not reach your local model. (${error.message})`) } finally { setReviewing(false) } }
+  async function generateTodayPlan() { const today = dateForInput(0); setGenerating(true); setNotice(''); setReview(''); setDate(today); try { const generated = await window.zoro.generatePlan({ date: today }); setPlan(null); setBlocks(generated); setNotice('Sample plan generated locally. Edit it, then save today’s baseline when it is ready.') } catch (error) { setNotice(`I could not generate a local sample plan. (${error.message})`) } finally { setGenerating(false) } }
 
   const nav = [ ['plan', CalendarDays, 'Plan tomorrow'], ['today', Clock3, 'Today'], ['review', FileText, 'Day review'], ['insights', LayoutDashboard, 'Insights'], ['ai-log', TerminalSquare, 'AI activity'] ]
   return <div className="app-shell">
     <aside className="sidebar"><div className="brand"><span className="brand-mark">Z</span><span>Zoro <em>Local</em></span></div><div className="workspace-label">WORKSPACE</div><nav>{nav.map(([id, Icon, label]) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => setView(id)}><Icon size={19} /> {label}</button>)}</nav><div className="sidebar-bottom"><div className="privacy-note"><span className="status-dot" /> Your records stay on this laptop</div><button className="help"><CircleHelp size={16} /> How Zoro works</button></div></aside>
     <main className="main"><div className="window-bar"><span>ZORO LOCAL / OFFLINE PLANNER</span><div className={`local-status ${status.online && status.modelReady ? 'ready' : ''}`}><span className="status-dot" />{status.loading ? 'CHECKING LOCAL AI' : status.online && status.modelReady ? 'LOCAL // QWEN3 8B READY' : 'LOCAL AI NOT READY'}</div></div>
-      {view === 'plan' && <PlanningView {...{ date, setDate, blocks: sortedBlocks, updateBlock, addBlock, removeBlock, review, reviewing, getReview, savePlan, saved, notice }} />}
+      {view === 'plan' && <PlanningView {...{ date, setDate, blocks: sortedBlocks, updateBlock, addBlock, removeBlock, review, reviewing, generating, getReview, generateTodayPlan, savePlan, saved, notice }} />}
       {view === 'today' && <TodayView {...{ date, setDate, plan, status, refresh, setView, setNotice }} />}
       {view === 'review' && <ReviewView {...{ date, setDate, plan, status, refresh, setNotice, setView }} />}
       {view === 'insights' && <InsightsView plans={plans} />}
@@ -57,8 +50,8 @@ function App() {
 
 function DateControl({ date, setDate }) { return <div className="date-row"><div><label htmlFor="active-date">DATE</label><input id="active-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} /></div></div> }
 
-function PlanningView({ date, setDate, blocks, updateBlock, addBlock, removeBlock, review, reviewing, getReview, savePlan, saved, notice }) {
-  return <><header className="topbar"><div><span className="eyebrow">NIGHT PLANNING / BASELINE MODE</span><h1>Plan for tomorrow</h1><p>Build tomorrow in your own words. Zoro will only offer a quiet second look.</p></div></header><section className="planning-layout"><div className="plan-canvas"><div className="plan-date-line"><DateControl date={date} setDate={setDate} /><div className="baseline-note"><Clock3 size={16} /> This becomes tomorrow’s baseline after you save it.</div></div><BalanceCard /><div className="section-head"><div><h2>Your time blocks</h2><p>Create the day in your own words. Zoro reviews; you decide.</p></div><button className="ghost-button" onClick={addBlock}><Plus size={16} /> Add block</button></div><BlockTable {...{ blocks, updateBlock, removeBlock }} /><div className="actions"><button className="secondary-button" onClick={getReview} disabled={reviewing}>{reviewing ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{reviewing ? 'Reviewing locally…' : 'Review my plan'}</button><button className="primary-button" onClick={savePlan}><Check size={17} />{saved ? 'Baseline saved' : 'Save tomorrow’s baseline'}</button></div>{notice && <p className="inline-notice">{notice}</p>}</div><ReviewPanel review={review} reviewing={reviewing} /></section></>
+function PlanningView({ date, setDate, blocks, updateBlock, addBlock, removeBlock, review, reviewing, generating, getReview, generateTodayPlan, savePlan, saved, notice }) {
+  return <><header className="topbar"><div><span className="eyebrow">NIGHT PLANNING / BASELINE MODE</span><h1>Plan for tomorrow</h1><p>Build tomorrow in your own words. Zoro will only offer a quiet second look.</p></div></header><section className="planning-layout"><div className="plan-canvas"><div className="plan-date-line"><DateControl date={date} setDate={setDate} /><div className="baseline-note"><Clock3 size={16} /> This becomes this date’s baseline after you save it.</div></div><BalanceCard /><div className="section-head"><div><h2>Your time blocks</h2><p>{blocks.length ? 'Create the day in your own words. Zoro reviews; you decide.' : 'This date is fresh. Add your first block or generate an editable sample.'}</p></div><div className="plan-actions"><button className="secondary-button" onClick={generateTodayPlan} disabled={generating}>{generating ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{generating ? 'Generating locally…' : 'Generate a sample plan for today'}</button><button className="ghost-button" onClick={addBlock}><Plus size={16} /> Add block</button></div></div><BlockTable {...{ blocks, updateBlock, removeBlock }} /><div className="actions"><button className="secondary-button" onClick={getReview} disabled={reviewing || blocks.length === 0}>{reviewing ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{reviewing ? 'Reviewing locally…' : 'Review my plan'}</button><button className="primary-button" onClick={savePlan} disabled={blocks.length === 0}><Check size={17} />{saved ? 'Baseline saved' : 'Save this date’s baseline'}</button></div>{notice && <p className="inline-notice">{notice}</p>}</div><ReviewPanel review={review} reviewing={reviewing} /></section></>
 }
 
 function BalanceCard() { return <div className="balance-card"><div><span className="eyebrow">DAY BALANCE</span><strong>Your plan is yours. Keep space for transitions, meals, and recovery.</strong></div><div className="balance-track"><span className="balance-work" /><span className="balance-rest" /><span className="balance-open" /></div><div className="balance-legend"><span><i className="work" /> Planned focus</span><span><i className="rest" /> Rest & routines</span><span><i className="open" /> Open time</span></div></div> }
