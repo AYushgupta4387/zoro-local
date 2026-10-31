@@ -56,17 +56,19 @@ function App() {
       <div className="sidebar-bottom"><div className="privacy-note"><span className="status-dot" /> Your records stay on this laptop</div><button className="help"><CircleHelp size={16} /> How Zoro works</button></div>
     </aside>
     <main className="main">
-      <header className="topbar"><div><span className="eyebrow">NIGHT PLANNING</span><h1>Plan for tomorrow</h1></div><div className={`local-status ${status.online && status.modelReady ? 'ready' : ''}`}><span className="status-dot" />{status.loading ? 'Checking local AI…' : status.online && status.modelReady ? 'LOCAL // QWEN3 8B READY' : 'LOCAL AI NOT READY'}</div></header>
+      <div className="window-bar"><span>ZORO LOCAL / OFFLINE PLANNER</span><div className={`local-status ${status.online && status.modelReady ? 'ready' : ''}`}><span className="status-dot" />{status.loading ? 'CHECKING LOCAL AI' : status.online && status.modelReady ? 'LOCAL // QWEN3 8B READY' : 'LOCAL AI NOT READY'}</div></div>
+      <header className="topbar"><div><span className="eyebrow">NIGHT PLANNING / BASELINE MODE</span><h1>Plan for tomorrow</h1><p>Build tomorrow in your own words. Zoro will only offer a quiet second look.</p></div></header>
       <section className="planning-layout">
         <div className="plan-canvas">
           <div className="date-row"><div><label htmlFor="plan-date">DATE</label><input id="plan-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} /></div><div className="baseline-note"><Clock3 size={16} /> This becomes tomorrow’s baseline after you save it.</div></div>
+          <div className="balance-card"><div><span className="eyebrow">DAY BALANCE</span><strong>Your plan is yours. Keep space for transitions, meals, and recovery.</strong></div><div className="balance-track"><span className="balance-work" /><span className="balance-rest" /><span className="balance-open" /></div><div className="balance-legend"><span><i className="work" /> Planned focus</span><span><i className="rest" /> Rest & routines</span><span><i className="open" /> Open time</span></div></div>
           <div className="section-head"><div><h2>Your time blocks</h2><p>Create the day in your own words. Zoro reviews; you decide.</p></div><button className="ghost-button" onClick={addBlock}><Plus size={16} /> Add block</button></div>
           <div className="timeline-card">
             <div className="timeline-header"><span>TIME</span><span>ACTIVITY</span><span>CATEGORY</span><span /></div>
             {sortedBlocks.map((block) => <div className="block-row" key={block.id}>
               <GripVertical className="drag" size={16} /><div className="time-inputs"><input aria-label="Start time" type="time" value={block.start} onChange={(event) => updateBlock(block.id, 'start', event.target.value)} /><span>—</span><input aria-label="End time" type="time" value={block.end} onChange={(event) => updateBlock(block.id, 'end', event.target.value)} /></div>
               <input className="activity-input" aria-label="Activity" value={block.title} onChange={(event) => updateBlock(block.id, 'title', event.target.value)} />
-              <label className="select-wrap"><select aria-label="Category" value={block.category} onChange={(event) => updateBlock(block.id, 'category', event.target.value)}>{categories.map((category) => <option key={category}>{category}</option>)}</select><ChevronDown size={14} /></label>
+              <label className={`select-wrap category-${block.category.toLowerCase()}`}><select aria-label="Category" value={block.category} onChange={(event) => updateBlock(block.id, 'category', event.target.value)}>{categories.map((category) => <option key={category}>{category}</option>)}</select><ChevronDown size={14} /></label>
               <button className="remove-button" aria-label={`Remove ${block.title}`} onClick={() => removeBlock(block.id)}><X size={16} /></button>
             </div>)}
           </div>
