@@ -43,7 +43,7 @@ The MVP records and saves voice audio locally. Offline speech-to-text still need
 
 ## Privacy
 
-Plans are saved in Electron's local application-data folder. The application does not send plan data to a remote service. The downloaded Ollama model is used through its local API.
+Plans are saved in Electron's local application-data folder in `zoro-data.json`. The same local file stores each baseline plan, recorded update, journal entry, and the last 100 local-model requests/responses shown under **AI activity**. The application does not send plan data to a remote service. The downloaded Ollama model is used through its local API.
 
 ## Next improvement
 

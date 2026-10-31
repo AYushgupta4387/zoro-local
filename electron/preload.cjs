@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('zoro', {
   getPlan: (date) => ipcRenderer.invoke('planner:get', date),
   listPlans: () => ipcRenderer.invoke('planner:list'),
+  getModelLogs: () => ipcRenderer.invoke('planner:model-logs'),
   savePlan: (plan) => ipcRenderer.invoke('planner:save-plan', plan),
   addUpdate: (payload) => ipcRenderer.invoke('planner:add-update', payload),
   saveJournal: (payload) => ipcRenderer.invoke('planner:save-journal', payload),
