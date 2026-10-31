@@ -145,3 +145,62 @@ button, input, select, textarea { font-weight: 600; }
 .journal-message.my-thought { justify-self: end; background: #19382f; }
 .journal-message > strong { display: block; color: #a7f3d0; margin-bottom: 5px; }
 .my-thought p { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* The rail marks when a note was logged, independent of the planned block. */
+.activity-log {
+  margin-top: 28px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.activity-log-heading, .activity-log-title, .checkin-heading,
+.checkin-meta, .checkin-summary summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.activity-log-heading {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.activity-log-title svg { color: #6ee7b7; }
+.activity-log-title h2 { margin: 0; font-size: 25px; }
+.activity-log-heading > span, .activity-log-empty, .checkin-meta { color: var(--text-secondary); }
+.activity-log-heading > span { font-size: 16px; }
+.activity-log-empty { margin: 0; padding: 24px; }
+.activity-log-list { list-style: none; padding: 8px 24px; margin: 0; }
+.activity-log-entry { display: grid; grid-template-columns: 112px minmax(0, 1fr); }
+.checkin-time {
+  position: relative;
+  padding: 22px 20px 0 0;
+  color: #a7f3d0;
+  font: 600 17px/1.5 Consolas, monospace;
+}
+.checkin-time small { display: block; color: var(--text-secondary); font-size: 13px; }
+.checkin-time::after {
+  content: ""; position: absolute; right: 0; top: 0; bottom: 0;
+  width: 2px; background: #35483f;
+}
+.activity-log-entry:first-child .checkin-time::after { top: 30px; }
+.activity-log-entry:last-child .checkin-time::after { bottom: auto; height: 30px; }
+.activity-log-entry:only-child .checkin-time::after { display: none; }
+.checkin-time::before {
+  content: ""; position: absolute; z-index: 1; right: -4px; top: 29px;
+  width: 10px; height: 10px; border-radius: 50%; background: #6ee7b7;
+  box-shadow: 0 0 0 4px var(--surface);
+}
+.checkin-body { min-width: 0; padding: 19px 0 20px 26px; overflow-wrap: anywhere; }
+.activity-log-entry + .activity-log-entry .checkin-body { border-top: 1px solid var(--border); }
+.checkin-heading { flex-wrap: wrap; }
+.checkin-heading h3 { margin: 0; font-size: 21px; }
+.checkin-heading .outcome { font-size: 15px; padding: 3px 10px; }
+.checkin-heading .skipped { color: #ffd49d; border-color: #745b38; background: #322a21; }
+.checkin-note { margin: 9px 0; max-width: 78ch; white-space: pre-wrap; font-size: 19px; line-height: 1.55; }
+.checkin-meta { flex-wrap: wrap; margin: 6px 0; font-size: 16px; }
+.checkin-summary { max-width: 76ch; margin-top: 8px; }
+.checkin-summary summary { width: fit-content; cursor: pointer; list-style: none; color: #a7f3d0; font-size: 16px; }
+.checkin-summary summary::-webkit-details-marker { display: none; }
+.checkin-summary[open] summary svg:last-child { transform: rotate(180deg); }
+.checkin-summary .markdown-text { margin-top: 10px; padding-left: 12px; border-left: 2px solid var(--primary); }

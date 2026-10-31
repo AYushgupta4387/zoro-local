@@ -804,42 +804,58 @@ function TodayView({
                 {feedback && <p className="inline-notice" role="status">{feedback}</p>}
               </div>
             </div>
-            <section className="updates-section">
-              <h2 className="view-title">Your activity log</h2>
-              <p className="empty-copy">Your original notes and the local AI's interpretation, newest first.</p>
-              {updates.length === 0 ? (
-                <p className="empty-copy">
-                  No activity has been recorded for this date yet.
-                </p>
-              ) : (
-                updates
-                  .slice()
-                  .reverse()
-                  .map((item) => (
-                    <article className="update-card" key={item.id}>
-                      <div className="update-card-head">
-                        <strong>{item.taskTitle}</strong>
-                        <span
-                          className={`outcome ${(item.outcome || "Unknown").toLowerCase().replaceAll(" ", "-")}`}
-                        >
-                          {item.outcome || "Unknown"}
-                        </span>
-                      </div>
-                      <p><strong>Your note:</strong> {item.rawText || item.summary}</p>
-                      {item.summary && item.summary !== item.rawText && <div><strong>AI summary:</strong><MarkdownText>{item.summary}</MarkdownText></div>}
-                      <small>
-                        {item.timestamp ? `${new Date(item.timestamp).toLocaleString()} · ` : ""}
-                        {minutesLabel(item.minutes)}
-                        {item.blocker ? ` · Blocker: ${item.blocker}` : ""}
-                      </small>
-                    </article>
-                  ))
-              )}
-            </section>
+            <ActivityLog updates={updates} date={date} />
           </>
         )}
       </section>
     </>
+  );
+}
+
+function ActivityLog({ updates, date }) {
+  return (
+    <section className="activity-log" aria-label="Your activity log">
+      <header className="activity-log-heading">
+        <div className="activity-log-title"><Clock3 size={23} /><h2>Your activity log</h2></div>
+        <span>{updates.length} {updates.length === 1 ? "check-in" : "check-ins"}{updates.length > 1 && " · Newest first"}</span>
+      </header>
+      {updates.length === 0 ? (
+        <p className="activity-log-empty">Save your first update above to start this day’s log.</p>
+      ) : (
+        <ol className="activity-log-list">
+          {updates.slice().reverse().map(item => {
+            const stamp = new Date(item.timestamp ?? "");
+            const hasTime = Number.isFinite(stamp.getTime());
+            const outcome = item.outcome || "Unknown";
+            const note = item.rawText?.trim();
+            const summary = item.summary?.trim();
+            return (
+              <li className="activity-log-entry" key={item.id}>
+                <div className="checkin-time">
+                  {hasTime ? <time dateTime={stamp.toISOString()} title={stamp.toLocaleString()}>
+                    {stamp.toLocaleTimeString("en-GB", {hour: "2-digit", minute: "2-digit"})}
+                    {localDate(stamp) !== date && <small>{localDate(stamp)}</small>}
+                  </time> : <span>Time unknown</span>}
+                </div>
+                <article className="checkin-body">
+                  <header className="checkin-heading">
+                    <h3>{item.taskTitle || "Activity update"}</h3>
+                    <span className={`outcome ${outcome.toLowerCase().replaceAll(" ", "-")}`}>{outcome}</span>
+                  </header>
+                  {note && <blockquote className="checkin-note">{note}</blockquote>}
+                  {item.minutes != null && <p className="checkin-meta"><Clock3 size={15} /> {minutesLabel(item.minutes)}</p>}
+                  {item.blocker && <p className="checkin-meta"><strong>Blocker</strong> {item.blocker}</p>}
+                  {summary && summary !== note && <details className="checkin-summary">
+                    <summary><Sparkles size={15} /> AI summary <ChevronDown size={15} /></summary>
+                    <MarkdownText>{summary}</MarkdownText>
+                  </details>}
+                </article>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </section>
   );
 }
 
