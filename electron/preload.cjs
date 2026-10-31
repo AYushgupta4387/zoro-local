@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("zoro", {
   askPlanner: (payload) => ipcRenderer.invoke("planner:ask", payload),
+  getConversation: (date) => ipcRenderer.invoke("journal:conversation", date),
   getPlan: (date) => ipcRenderer.invoke("planner:get", date),
   listPlans: () => ipcRenderer.invoke("planner:list"),
   getModelLogs: () => ipcRenderer.invoke("planner:model-logs"),

@@ -120,3 +120,28 @@ button, input, select, textarea { font-weight: 600; }
 .markdown-text p { margin: 0 0 12px; }.markdown-text h1, .markdown-text h2, .markdown-text h3, .markdown-text h4 { margin: 18px 0 8px; color: var(--text); font-size: 18px; line-height: 1.35; }.markdown-text ul, .markdown-text ol { padding-left: 24px; margin: 8px 0 14px; }.markdown-text li { margin: 4px 0; }.markdown-text a { color: #6ee7b7; }.markdown-text pre { overflow: auto; max-height: 400px; padding: 12px; border-radius: 8px; background: var(--surface-lowest); font-size: 15px; }.markdown-text code { font-family: Consolas, monospace; }.markdown-text blockquote { margin-left: 0; padding-left: 12px; border-left: 3px solid var(--primary); }
 .journal-preview { margin-top: 18px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-low); }.journal-preview > strong { display: block; margin-bottom: 10px; color: #a7f3d0; }.log-detail .markdown-text { padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-lowest); }
 .lookup-data { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; }
+
+/* Category swatches are shared by the editor, timeline, and day review. */
+.category-routine { --category-ink: #b1c4dd; }
+.category-work { --category-ink: #87bfff; }
+.category-study { --category-ink: #deabed; }
+.category-health { --category-ink: #72dfae; }
+.category-personal { --category-ink: #ffb0a0; }
+.category-travel { --category-ink: #ffd27d; }
+.category-rest { --category-ink: #94e2df; }
+.select-wrap[class*="category-"] .category-trigger,
+.category-menu button[class*="category-"], .category-label {
+  color: var(--category-ink);
+  background: color-mix(in srgb, var(--category-ink) 11%, var(--surface-low));
+  border-color: color-mix(in srgb, var(--category-ink) 45%, var(--surface-low));
+}
+.category-menu button[aria-selected="true"] { box-shadow: inset 3px 0 currentColor; }
+.category-menu button + button { margin-top: 2px; }
+.category-label { display: inline-block; padding: 2px 8px; border: 1px solid; border-radius: 6px; }
+.journal-conversation { margin-bottom: 24px; }
+.journal-thread { max-height: 49vh; overflow: auto; }
+.journal-thread article { display: grid; gap: 10px; margin-bottom: 16px; }
+.journal-message { padding: 14px 18px; border-radius: 12px; background: var(--surface-low); max-width: min(80ch, 90%); }
+.journal-message.my-thought { justify-self: end; background: #19382f; }
+.journal-message > strong { display: block; color: #a7f3d0; margin-bottom: 5px; }
+.my-thought p { white-space: pre-wrap; overflow-wrap: anywhere; }

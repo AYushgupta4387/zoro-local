@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require("electron");
 const fs = require("fs/promises");
 const path = require("path");
-const { askPlanner } = require("./planner-assistant.cjs");
+const { askPlanner, validDate } = require("./planner-assistant.cjs");
 
 const model = "qwen3:8b";
 const ollamaUrl = "http://127.0.0.1:11434";
@@ -124,15 +124,37 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  let asking = false;
-  ipcMain.handle("planner:ask", async (_, payload) => {
-    if (asking) throw Error("A planner question is already in progress.");
-    asking = true;
+  const conversationsInProgress = new Map();
+  ipcMain.handle("journal:conversation", async (_, date) => {
+    if (!validDate(date)) throw Error("Invalid journal date.");
+    await conversationsInProgress.get(date)?.catch(() => {});
+    return (await readStore()).conversations?.[date] ?? [];
+  });
+  ipcMain.handle("planner:ask", async (_, {journalDate, question, today}) => {
+    if (!validDate(journalDate)) throw Error("Invalid journal date.");
+    if (conversationsInProgress.size) throw Error("Another journal reply is still being written. Try again in a moment.");
+    async function respond() {
+      const store = await readStore();
+      const turns = store.conversations?.[journalDate] ?? [];
+      const history = turns.slice(-3).flatMap(turn => [
+        {role: "user", content: turn.question}, {role: "assistant", content: turn.answer},
+      ]);
+      const reply = await askPlanner({mode:"reflect", journalDate, today, question, history}, store.plans, ollamaRequest);
+      const turn = {id:crypto.randomUUID(), question, ...reply};
+      await queueWrite(async () => {
+        const latest = await readStore();
+        latest.conversations ??= {};
+        (latest.conversations[journalDate] ??= []).push(turn);
+        await writeStore(latest);
+      });
+      return turn;
+    }
+    const pending = respond();
+    conversationsInProgress.set(journalDate, pending);
     try {
-      const { plans } = await readStore();
-      return await askPlanner(payload, plans, ollamaRequest);
+      return await pending;
     } finally {
-      asking = false;
+      conversationsInProgress.delete(journalDate);
     }
   });
   function handleWrite(channel, handler) {

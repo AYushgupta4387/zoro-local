@@ -182,9 +182,8 @@ function App() {
   const nav = [
     ["plan", CalendarDays, "Plan tomorrow"],
     ["today", Clock3, "Today"],
-    ["review", FileText, "Day review"],
+    ["review", FileText, "Journal & day review"],
     ["insights", LayoutDashboard, "Insights"],
-    ["ask", Sparkles, "Ask Zoro"],
     ["ai-log", TerminalSquare, "AI activity"],
   ];
 
@@ -259,70 +258,74 @@ function App() {
           />
         )}
         {view === "review" && (
-          <ReviewView
+          <ReviewView key={date}
             {...{ date, setDate: selectDate, plan: plan?.date === date ? plan : null, plans, status, refresh, setNotice, setView }}
           />
         )}
         {view === "insights" && <InsightsView plans={plans} />}
-        <div hidden={view !== "ask"}><PlannerAssistant /></div>
         {view === "ai-log" && <ModelLogView />}
       </main>
     </div>
   );
 }
 
-function PlannerAssistant() {
-  const [mode, setMode] = useState("tools");
+function JournalConversation({ date, onKeep }) {
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const thread = useRef(null);
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => window.zoro.getConversation(date))
+      .then(items => { if (active) setTurns(items); })
+      .catch(err => { if (active) setError(err.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [date]);
+  useEffect(() => {
+    if (thread.current) thread.current.scrollTop = thread.current.scrollHeight;
+  }, [turns, pending]);
   async function submit(event) {
     event.preventDefault();
-    const prompt = question.trim();
-    if (!prompt || pending) return;
+    const thought = question.trim();
+    if (!thought || loading || pending) return;
     setPending(true);
     setError("");
     try {
-      const history = turns.slice(-3).flatMap(turn => [
-        {role: "user", content: turn.question},
-        {role: "assistant", content: turn.answer},
-      ]);
-      const reply = await window.zoro.askPlanner({question: prompt, today: dateForInput(0), mode, history});
-      setTurns(current => [...current, {question: prompt, ...reply}]);
+      const reply = await window.zoro.askPlanner({question: thought, today: dateForInput(0), journalDate: date});
+      setTurns(current => [...current, reply]);
       setQuestion("");
     } catch (failure) {
       setError(failure.message);
-    } finally {
-      setPending(false);
-    }
+    } finally { setPending(false); }
   }
-  return <>
-    <header className="topbar"><div><span className="eyebrow">LOCAL ASSISTANT</span>
-      <h1>Ask Zoro</h1><p>Explore your saved plans, journals and activity updates.</p></div></header>
-    <section className="single-layout">
-      <form className="update-composer" onSubmit={submit}>
-        <div className="date-controls" role="group" aria-label="Question mode">
-          {[["tools", "Ask about records"], ["search", "Search notes by meaning"]].map(([value,label]) =>
-            <button key={value} type="button" aria-pressed={mode === value} disabled={pending}
-              className={mode === value ? "primary-button" : "secondary-button"} onClick={() => setMode(value)}>{label}</button>)}
+  return <section className="journal-conversation update-composer">
+    <span className="eyebrow">PRIVATE JOURNAL · {date}</span>
+    <h2>What’s on your mind?</h2>
+    <p>Talk it through with Zoro, your AI journaling companion. Your conversation is saved on this laptop for this date.</p>
+    <div className="journal-thread" ref={thread} role="log" aria-label="Journal conversation">
+      {turns.map(turn => <article key={turn.id}>
+        <div className="journal-message my-thought"><strong>You</strong><p>{turn.question}</p>
+          {onKeep && <button type="button" className="ghost-button" onClick={() => onKeep(turn.question)}>Add my words to draft</button>}
         </div>
-        <p>{mode === "tools" ? "Ask about a date or a period. Qwen can look up records and calculate totals." : "Describe a topic. Zoro finds related passages and uses them to answer."}</p>
-        <textarea aria-label="Question for Zoro" maxLength={2000} disabled={pending} value={question}
-          placeholder={mode === "tools" ? "How many minutes did I record this week?" : "What interrupted my focus while studying?"}
-          onChange={event => setQuestion(event.target.value)} />
-        <div className="actions"><button className="primary-button" disabled={pending || !question.trim()}>{pending ? "Checking local records…" : "Ask Zoro"}</button></div>
-        {error && <p role="alert">{error}</p>}
-      </form>
-      {turns.slice().reverse().map((turn,index) => <article key={turns.length - index} className="updates-section">
-        <h2>{turn.question}</h2><MarkdownText>{turn.answer}</MarkdownText>
-        {turn.sources.length > 0 && <details><summary>Records used ({turn.sources.length} lookups)</summary>
-          {turn.sources.map((source,i) => <div key={i}><h3>{{search_notes:"Related excerpts",get_day:"Day lookup",get_metrics:"Period totals",get_updates:"Recorded updates"}[source.name] || "Lookup"}</h3>
-            {source.name === "search_notes" && Array.isArray(source.data) ? source.data.map((hit,j) => <blockquote key={j}><strong>{hit.date} · {hit.source}</strong><p>{hit.excerpt}</p></blockquote>) : <pre className="lookup-data">{JSON.stringify(source.data,null,2)}</pre>}
-          </div>)}</details>}
+        <div className="journal-message"><strong>Zoro</strong><MarkdownText>{turn.answer}</MarkdownText>
+          {!!turn.sources?.length && <details><summary>Records used</summary>
+            {turn.sources.map((source,i) => <pre key={i} className="lookup-data">{JSON.stringify(source.data,null,2)}</pre>)}
+          </details>}
+        </div>
       </article>)}
-    </section>
-  </>;
+      {pending && <p role="status">Zoro is reading your message…</p>}
+    </div>
+    <form onSubmit={submit}>
+      <textarea aria-label="Journal message" maxLength={2000} disabled={loading || pending}
+        value={question} onChange={event => setQuestion(event.target.value)}
+        placeholder="Something that stayed with me today was…" />
+      <div className="actions"><button className="primary-button" disabled={loading || pending || !question.trim()}>Send message</button></div>
+      {error && <p role="alert">{error}</p>}
+    </form>
+  </section>;
 }
 
 function DateControl({ date, setDate, plans = [] }) {
@@ -576,7 +579,7 @@ function CategoryPicker({ value, onChange }) {
               type="button"
               role="option"
               aria-selected={category === value}
-              className={category === value ? "selected" : ""}
+              className={`category-${category.toLowerCase()} ${category === value ? "selected" : ""}`}
               key={category}
               onClick={() => {
                 onChange(category);
@@ -753,7 +756,7 @@ function TodayView({
                       </span>
                       <div>
                         <strong>{block.title}</strong>
-                        <small>{block.category}</small>
+                        <small><span className={`category-label category-${block.category.toLowerCase()}`}>{block.category}</span></small>
                       </div>
                     </div>
                   ))}
@@ -900,12 +903,13 @@ function ReviewView({
       <header className="topbar">
         <div>
           <span className="eyebrow">DAY REVIEW / EVIDENCE</span>
-          <h1>Review the day honestly</h1>
+          <h1>Journal &amp; day review</h1>
           <p>Compare the baseline with only what you recorded.</p>
         </div>
       </header>
       <section className="single-layout">
         <DateControl date={date} setDate={setDate} plans={plans} />
+        <JournalConversation date={date} onKeep={plan ? thought => setJournal(current => [current, thought].filter(Boolean).join("\n\n")) : null} />
         {!plan ? (
           <EmptyPlan setView={setView} />
         ) : (
@@ -923,7 +927,7 @@ function ReviewView({
                   );
                   return (
                     <div className="comparison-row" key={block.id}>
-                      <div><strong>{block.title}</strong><small>{block.start}–{block.end} · {block.category}</small></div>
+                      <div><strong>{block.title}</strong><small>{block.start}–{block.end} · <span className={`category-label category-${block.category.toLowerCase()}`}>{block.category}</span></small></div>
                       <div>{matches.length ? matches.map((item) => <div className="comparison-update" key={item.id}><strong>{item.outcome || "Unknown"}</strong><MarkdownText>{item.summary || item.rawText}</MarkdownText><small>{minutesLabel(item.minutes)}{item.blocker ? ` · Blocker: ${item.blocker}` : ""}</small></div>) : <small>Not recorded</small>}</div>
                     </div>
                   );
