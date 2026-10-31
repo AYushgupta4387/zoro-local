@@ -1,0 +1,7 @@
+node_modules/
+dist/
+release/
+data/*.json
+data/*.webm
+.env
+*.log
