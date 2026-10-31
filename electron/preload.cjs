@@ -1,8 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('zoro', {
-  getPlan: () => ipcRenderer.invoke('plan:get'),
-  savePlan: (plan) => ipcRenderer.invoke('plan:save', plan),
+  getPlan: (date) => ipcRenderer.invoke('planner:get', date),
+  listPlans: () => ipcRenderer.invoke('planner:list'),
+  savePlan: (plan) => ipcRenderer.invoke('planner:save-plan', plan),
+  addUpdate: (payload) => ipcRenderer.invoke('planner:add-update', payload),
+  saveJournal: (payload) => ipcRenderer.invoke('planner:save-journal', payload),
   checkOllama: () => ipcRenderer.invoke('ollama:status'),
-  reviewPlan: (plan) => ipcRenderer.invoke('ollama:review-plan', plan)
+  reviewPlan: (plan) => ipcRenderer.invoke('ollama:review-plan', plan),
+  parseUpdate: (payload) => ipcRenderer.invoke('ollama:parse-update', payload),
+  makeJournal: (payload) => ipcRenderer.invoke('ollama:journal', payload),
+  saveVoice: (payload) => ipcRenderer.invoke('voice:save', payload)
 })

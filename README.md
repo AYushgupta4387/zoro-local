@@ -7,6 +7,10 @@ An offline-first desktop planner. You create tomorrow's plan; Zoro reviews it lo
 - Night Planning: add, edit, and remove your own time blocks.
 - Local baseline storage: the saved plan stays on this computer.
 - Local AI review: Qwen3 8B checks for scheduling conflicts, missing transitions, breaks, and buffers without changing your plan.
+- Today view: record natural-language updates; Qwen extracts a task, outcome, duration, and blocker locally.
+- Day review: compare the unchanged baseline with what was recorded and create an editable local journal draft.
+- Insights: see saved days, recorded updates, completed updates, recorded minutes, and journal-entry totals.
+- Voice capture: record audio directly in the app and save it locally for later transcription.
 - Offline-first UI: no account, API key, or cloud database.
 
 ## Run locally
@@ -26,13 +30,21 @@ An offline-first desktop planner. You create tomorrow's plan; Zoro reviews it lo
 
 The app expects Ollama at `http://127.0.0.1:11434`.
 
+## Quick test path
+
+1. In **Plan tomorrow**, make a few time blocks and select **Save tomorrow's baseline**.
+2. In **Today**, add a short typed update such as `I completed React study for 45 minutes.`
+3. In **Day review**, generate and save the editable journal draft.
+4. In **Insights**, confirm the local metrics reflect the saved update.
+
+## Current voice boundary
+
+The MVP records and saves voice audio locally. Offline speech-to-text still needs a local Whisper runtime/model, so add a typed transcript before saving it as an update. This avoids implying that an audio recording was transcribed when it was not.
+
 ## Privacy
 
 Plans are saved in Electron's local application-data folder. The application does not send plan data to a remote service. The downloaded Ollama model is used through its local API.
 
-## Roadmap
+## Next improvement
 
-- Today timeline and real-time typed updates
-- Local speech-to-text
-- Day review and editable journal summary
-- Weekly/monthly insights dashboard
+- Add local Whisper-based speech-to-text to turn saved recordings into updates automatically.
