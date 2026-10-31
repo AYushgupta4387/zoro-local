@@ -30,6 +30,10 @@ An offline-first desktop planner. You create tomorrow's plan; Zoro reviews it lo
 
 The app expects Ollama at `http://127.0.0.1:11434`.
 
+**Ask Zoro** uses Qwen for answers and `all-minilm` for local semantic search.
+On a new laptop, run `ollama pull all-minilm` once alongside the Qwen download.
+In **Search notes by meaning**, Zoro embeds saved journals and activity notes on demand and retrieves up to five excerpts. It caches vectors in memory until Electron exits. **Ask about records** lets Qwen request a day, a range of updates, recorded totals, or a semantic search. Expand **Records used** under a reply to see the evidence returned by each lookup. Both modes use saved personal records. The sample Insights preview is separate.
+
 ## Quick test path
 
 1. In **Plan tomorrow**, make a few time blocks and select **Save tomorrow's baseline**.

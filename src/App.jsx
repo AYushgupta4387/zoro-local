@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   BarChart3,
   CalendarDays,
@@ -32,13 +33,27 @@ const categories = [
 const dateForInput = (days = 1) => {
   const date = new Date();
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return localDate(date);
 };
+
+const localDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
 const minutesLabel = (value) =>
   value == null ? "Time not recorded" : `${value} min recorded`;
 
-const cleanText = (text) => text.replace(/\*\*/g, "").replace(/^[-•]\s*/, "");
+function MarkdownText({ children }) {
+  return <div className="markdown-text"><ReactMarkdown>{String(children ?? "")}</ReactMarkdown></div>;
+}
+
+function modelOutputMarkdown(entry) {
+  const content = entry.response?.message?.content;
+  if (typeof content !== "string") return "";
+  try {
+    const parsed = JSON.parse(content);
+    if (typeof parsed !== "object" || parsed === null) return String(parsed);
+    return Object.entries(parsed).filter(([key]) => key !== "title").map(([key, value]) => `### ${key.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase())}\n\n${typeof value === "string" ? value : `\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``}`).join("\n\n");
+  } catch { return content; }
+}
 
 function App() {
   const [view, setView] = useState("plan");
@@ -56,14 +71,29 @@ function App() {
   const [generating, setGenerating] = useState(false);
   const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState("");
+  const refreshId = useRef(0);
+  const selectedDateRef = useRef(date);
+
+  function selectDate(nextDate) {
+    if (nextDate === date) return;
+    selectedDateRef.current = nextDate;
+    refreshId.current += 1;
+    setPlan(null);
+    setBlocks([]);
+    setReview("");
+    setNotice("");
+    setDate(nextDate);
+  }
 
   async function refresh(selectedDate = date) {
+    const request = ++refreshId.current;
     const [savedPlan, allPlans, modelStatus] = await Promise.all([
       window.zoro.getPlan(selectedDate),
       window.zoro.listPlans(),
       window.zoro.checkOllama(),
     ]);
 
+    if (request !== refreshId.current) return;
     setPlan(savedPlan);
     setPlans(allPlans);
     setStatus({ loading: false, ...modelStatus });
@@ -123,27 +153,27 @@ function App() {
     try {
       setReview(await window.zoro.reviewPlan({ date, blocks: sortedBlocks }));
     } catch (error) {
-      setReview(`I could not reach your local model. (${error.message})`);
+      setReview(`Could not complete the review: ${error.message}`);
     } finally {
       setReviewing(false);
     }
   }
 
-  async function generateTodayPlan() {
-    const today = dateForInput(0);
+  async function generateSamplePlan() {
+    const requestedDate = date;
     setGenerating(true);
     setNotice("");
     setReview("");
-    setDate(today);
     try {
-      const generated = await window.zoro.generatePlan({ date: today });
-      setPlan(null);
+      const generated = await window.zoro.generatePlan({ date: requestedDate });
+      if (selectedDateRef.current !== requestedDate) return;
+      refreshId.current += 1;
       setBlocks(generated);
       setNotice(
-        "Sample plan generated locally. Edit it, then save today’s baseline when it is ready.",
+        `Sample plan for ${requestedDate} generated locally. Edit it, then save the baseline when it is ready.`,
       );
     } catch (error) {
-      setNotice(`I could not generate a local sample plan. (${error.message})`);
+      if (selectedDateRef.current === requestedDate) setNotice(`I could not generate a local sample plan. (${error.message})`);
     } finally {
       setGenerating(false);
     }
@@ -154,6 +184,7 @@ function App() {
     ["today", Clock3, "Today"],
     ["review", FileText, "Day review"],
     ["insights", LayoutDashboard, "Insights"],
+    ["ask", Sparkles, "Ask Zoro"],
     ["ai-log", TerminalSquare, "AI activity"],
   ];
 
@@ -205,7 +236,7 @@ function App() {
           <PlanningView
             {...{
               date,
-              setDate,
+              setDate: selectDate,
               blocks: sortedBlocks,
               updateBlock,
               addBlock,
@@ -214,41 +245,107 @@ function App() {
               reviewing,
               generating,
               getReview,
-              generateTodayPlan,
+              generateSamplePlan,
               savePlan,
               saved,
               notice,
+              plans,
             }}
           />
         )}
         {view === "today" && (
           <TodayView
-            {...{ date, setDate, plan, status, refresh, setView, setNotice }}
+            {...{ date, setDate: selectDate, plan: plan?.date === date ? plan : null, plans, status, refresh, setView, setNotice }}
           />
         )}
         {view === "review" && (
           <ReviewView
-            {...{ date, setDate, plan, status, refresh, setNotice, setView }}
+            {...{ date, setDate: selectDate, plan: plan?.date === date ? plan : null, plans, status, refresh, setNotice, setView }}
           />
         )}
         {view === "insights" && <InsightsView plans={plans} />}
+        <div hidden={view !== "ask"}><PlannerAssistant /></div>
         {view === "ai-log" && <ModelLogView />}
       </main>
     </div>
   );
 }
 
-function DateControl({ date, setDate }) {
+function PlannerAssistant() {
+  const [mode, setMode] = useState("tools");
+  const [question, setQuestion] = useState("");
+  const [turns, setTurns] = useState([]);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event) {
+    event.preventDefault();
+    const prompt = question.trim();
+    if (!prompt || pending) return;
+    setPending(true);
+    setError("");
+    try {
+      const history = turns.slice(-3).flatMap(turn => [
+        {role: "user", content: turn.question},
+        {role: "assistant", content: turn.answer},
+      ]);
+      const reply = await window.zoro.askPlanner({question: prompt, today: dateForInput(0), mode, history});
+      setTurns(current => [...current, {question: prompt, ...reply}]);
+      setQuestion("");
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setPending(false);
+    }
+  }
+  return <>
+    <header className="topbar"><div><span className="eyebrow">LOCAL ASSISTANT</span>
+      <h1>Ask Zoro</h1><p>Explore your saved plans, journals and activity updates.</p></div></header>
+    <section className="single-layout">
+      <form className="update-composer" onSubmit={submit}>
+        <div className="date-controls" role="group" aria-label="Question mode">
+          {[["tools", "Ask about records"], ["search", "Search notes by meaning"]].map(([value,label]) =>
+            <button key={value} type="button" aria-pressed={mode === value} disabled={pending}
+              className={mode === value ? "primary-button" : "secondary-button"} onClick={() => setMode(value)}>{label}</button>)}
+        </div>
+        <p>{mode === "tools" ? "Ask about a date or a period. Qwen can look up records and calculate totals." : "Describe a topic. Zoro finds related passages and uses them to answer."}</p>
+        <textarea aria-label="Question for Zoro" maxLength={2000} disabled={pending} value={question}
+          placeholder={mode === "tools" ? "How many minutes did I record this week?" : "What interrupted my focus while studying?"}
+          onChange={event => setQuestion(event.target.value)} />
+        <div className="actions"><button className="primary-button" disabled={pending || !question.trim()}>{pending ? "Checking local records…" : "Ask Zoro"}</button></div>
+        {error && <p role="alert">{error}</p>}
+      </form>
+      {turns.slice().reverse().map((turn,index) => <article key={turns.length - index} className="updates-section">
+        <h2>{turn.question}</h2><MarkdownText>{turn.answer}</MarkdownText>
+        {turn.sources.length > 0 && <details><summary>Records used ({turn.sources.length} lookups)</summary>
+          {turn.sources.map((source,i) => <div key={i}><h3>{{search_notes:"Related excerpts",get_day:"Day lookup",get_metrics:"Period totals",get_updates:"Recorded updates"}[source.name] || "Lookup"}</h3>
+            {source.name === "search_notes" && Array.isArray(source.data) ? source.data.map((hit,j) => <blockquote key={j}><strong>{hit.date} · {hit.source}</strong><p>{hit.excerpt}</p></blockquote>) : <pre className="lookup-data">{JSON.stringify(source.data,null,2)}</pre>}
+          </div>)}</details>}
+      </article>)}
+    </section>
+  </>;
+}
+
+function DateControl({ date, setDate, plans = [] }) {
+  const [open, setOpen] = useState(false);
+  const [month, setMonth] = useState(() => new Date(`${date}T12:00:00`));
+  useEffect(() => setMonth(new Date(`${date}T12:00:00`)), [date]);
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const offset = (first.getDay() + 6) % 7;
+  const count = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const planned = new Set(plans.map((item) => item.date));
   return (
     <div className="date-row">
-      <div>
-        <label htmlFor="active-date">DATE</label>
-        <input
-          id="active-date"
-          type="date"
-          value={date}
-          onChange={(event) => setDate(event.target.value)}
-        />
+      <div className="date-picker">
+        <label>SELECT DATE</label>
+        <div className="date-controls">
+          <button type="button" className="date-trigger" aria-expanded={open} onClick={() => setOpen(!open)}><CalendarDays size={18} /> {new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "long", year: "numeric" })} <ChevronDown size={16} /></button>
+          <button type="button" className="secondary-button" onClick={() => { setDate(dateForInput(0)); setOpen(false); }}>Today</button>
+        </div>
+        {open && <div className="calendar-popover" role="dialog" aria-label="Choose a date">
+          <div className="calendar-heading"><button type="button" aria-label="Previous month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>‹</button><strong>{month.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</strong><button type="button" aria-label="Next month" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>›</button></div>
+          <div className="calendar-grid">{["M", "T", "W", "T", "F", "S", "S"].map((day, i) => <span className="calendar-weekday" key={i}>{day}</span>)}{Array.from({ length: offset }, (_, i) => <span key={`blank-${i}`} />)}{Array.from({ length: count }, (_, i) => { const value = localDate(new Date(month.getFullYear(), month.getMonth(), i + 1)); return <button type="button" key={value} aria-label={`${value}${planned.has(value) ? ", plan saved" : ""}`} aria-pressed={value === date} className={`calendar-day ${value === date ? "selected" : ""} ${planned.has(value) ? "has-plan" : ""}`} onClick={() => { setDate(value); setOpen(false); }}>{i + 1}</button>; })}</div>
+          <div className="calendar-legend"><i /> Plan saved</div>
+        </div>}
       </div>
     </div>
   );
@@ -265,10 +362,11 @@ function PlanningView({
   reviewing,
   generating,
   getReview,
-  generateTodayPlan,
+  generateSamplePlan,
   savePlan,
   saved,
   notice,
+  plans,
 }) {
   return (
     <>
@@ -285,13 +383,12 @@ function PlanningView({
       <section className="planning-layout">
         <div className="plan-canvas">
           <div className="plan-date-line">
-            <DateControl date={date} setDate={setDate} />
+            <DateControl date={date} setDate={setDate} plans={plans} />
             <div className="baseline-note">
               <Clock3 size={16} /> This becomes this date’s baseline after you
               save it.
             </div>
           </div>
-          <BalanceCard />
           <div className="section-head">
             <div>
               <h2>Your time blocks</h2>
@@ -304,7 +401,7 @@ function PlanningView({
             <div className="plan-actions">
               <button
                 className="secondary-button"
-                onClick={generateTodayPlan}
+                onClick={generateSamplePlan}
                 disabled={generating}
               >
                 {generating ? (
@@ -314,7 +411,7 @@ function PlanningView({
                 )}
                 {generating
                   ? "Generating locally…"
-                  : "Generate a sample plan for today"}
+                  : "Generate a sample plan for this date"}
               </button>
               <button className="ghost-button" onClick={addBlock}>
                 <Plus size={16} /> Add block
@@ -349,35 +446,6 @@ function PlanningView({
         <ReviewPanel review={review} reviewing={reviewing} />
       </section>
     </>
-  );
-}
-
-function BalanceCard() {
-  return (
-    <div className="balance-card">
-      <div>
-        <span className="eyebrow">DAY BALANCE</span>
-        <strong>
-          Your plan is yours. Keep space for transitions, meals, and recovery.
-        </strong>
-      </div>
-      <div className="balance-track">
-        <span className="balance-work" />
-        <span className="balance-rest" />
-        <span className="balance-open" />
-      </div>
-      <div className="balance-legend">
-        <span>
-          <i className="work" /> Planned focus
-        </span>
-        <span>
-          <i className="rest" /> Rest & routines
-        </span>
-        <span>
-          <i className="open" /> Open time
-        </span>
-      </div>
-    </div>
   );
 }
 
@@ -554,12 +622,7 @@ function ReviewPanel({ review, reviewing }) {
       )}
       {!reviewing && review && (
         <div className="review-result">
-          {review
-            .split("\n")
-            .filter(Boolean)
-            .map((line, index) => (
-              <p key={index}>{cleanText(line)}</p>
-            ))}
+          <MarkdownText>{review}</MarkdownText>
         </div>
       )}
       <div className="review-footer">
@@ -573,6 +636,7 @@ function TodayView({
   date,
   setDate,
   plan,
+  plans,
   status,
   refresh,
   setView,
@@ -582,6 +646,7 @@ function TodayView({
   const [saving, setSaving] = useState(false);
   const [recording, setRecording] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState("");
+  const [feedback, setFeedback] = useState("");
 
   const recorder = useRef(null);
   const chunks = useRef([]);
@@ -611,11 +676,11 @@ function TodayView({
       });
 
       setText("");
-      setNotice("Update saved locally.");
+      setFeedback("Update saved locally.");
       
       await refresh(date);
     } catch (error) {
-      setNotice(error.message);
+      setFeedback(`Could not save update: ${error.message}`);
     } finally {
       setSaving(false);
     }
@@ -672,7 +737,7 @@ function TodayView({
         </div>
       </header>
       <section className="single-layout">
-        <DateControl date={date} setDate={setDate} />
+        <DateControl date={date} setDate={setDate} plans={plans} />
         {!plan ? (
           <EmptyPlan setView={setView} />
         ) : (
@@ -733,10 +798,12 @@ function TodayView({
                   </button>
                 </div>
                 {voiceStatus && <p className="voice-note">{voiceStatus}</p>}
+                {feedback && <p className="inline-notice" role="status">{feedback}</p>}
               </div>
             </div>
             <section className="updates-section">
-              <h2 className="view-title">Recorded updates</h2>
+              <h2 className="view-title">Your activity log</h2>
+              <p className="empty-copy">Your original notes and the local AI's interpretation, newest first.</p>
               {updates.length === 0 ? (
                 <p className="empty-copy">
                   No activity has been recorded for this date yet.
@@ -750,13 +817,15 @@ function TodayView({
                       <div className="update-card-head">
                         <strong>{item.taskTitle}</strong>
                         <span
-                          className={`outcome ${item.outcome.toLowerCase().replaceAll(" ", "-")}`}
+                          className={`outcome ${(item.outcome || "Unknown").toLowerCase().replaceAll(" ", "-")}`}
                         >
-                          {item.outcome}
+                          {item.outcome || "Unknown"}
                         </span>
                       </div>
-                      <p>{item.summary}</p>
+                      <p><strong>Your note:</strong> {item.rawText || item.summary}</p>
+                      {item.summary && item.summary !== item.rawText && <div><strong>AI summary:</strong><MarkdownText>{item.summary}</MarkdownText></div>}
                       <small>
+                        {item.timestamp ? `${new Date(item.timestamp).toLocaleString()} · ` : ""}
                         {minutesLabel(item.minutes)}
                         {item.blocker ? ` · Blocker: ${item.blocker}` : ""}
                       </small>
@@ -788,6 +857,7 @@ function ReviewView({
   date,
   setDate,
   plan,
+  plans,
   status,
   refresh,
   setNotice,
@@ -795,7 +865,10 @@ function ReviewView({
 }) {
   const [journal, setJournal] = useState("");
   const [writing, setWriting] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [saving, setSaving] = useState(false);
   useEffect(() => setJournal(plan?.journal ?? ""), [plan?.journal, date]);
+  useEffect(() => setFeedback(""), [date]);
   async function draftJournal() {
     if (!plan) return;
     setWriting(true);
@@ -806,15 +879,20 @@ function ReviewView({
       });
       setJournal(text);
     } catch (error) {
-      setNotice(error.message);
+      setFeedback(`Could not generate draft: ${error.message}`);
     } finally {
       setWriting(false);
     }
   }
   async function saveJournal() {
-    await window.zoro.saveJournal({ date, journal });
-    setNotice("Journal saved locally.");
-    await refresh(date);
+    setSaving(true);
+    try {
+      await window.zoro.saveJournal({ date, journal });
+      await refresh(date);
+      setFeedback("Journal saved locally.");
+    } catch (error) {
+      setFeedback(`Could not save journal: ${error.message}`);
+    } finally { setSaving(false); }
   }
   const updates = plan?.updates ?? [];
   return (
@@ -827,7 +905,7 @@ function ReviewView({
         </div>
       </header>
       <section className="single-layout">
-        <DateControl date={date} setDate={setDate} />
+        <DateControl date={date} setDate={setDate} plans={plans} />
         {!plan ? (
           <EmptyPlan setView={setView} />
         ) : (
@@ -835,6 +913,8 @@ function ReviewView({
             <div className="review-grid">
               <section className="comparison-card">
                 <h2>Planned vs recorded</h2>
+                <p className="empty-copy">Each row compares a planned activity with the updates matched to it.</p>
+                <div className="comparison-head"><span>PLANNED</span><span>RECORDED</span></div>
                 {plan.baselineBlocks.map((block) => {
                   const matches = updates.filter(
                     (item) =>
@@ -843,18 +923,12 @@ function ReviewView({
                   );
                   return (
                     <div className="comparison-row" key={block.id}>
-                      <span>
-                        {block.start}–{block.end}
-                      </span>
-                      <strong>{block.title}</strong>
-                      <em>
-                        {matches.length
-                          ? matches.map((item) => item.outcome).join(", ")
-                          : "Not recorded"}
-                      </em>
+                      <div><strong>{block.title}</strong><small>{block.start}–{block.end} · {block.category}</small></div>
+                      <div>{matches.length ? matches.map((item) => <div className="comparison-update" key={item.id}><strong>{item.outcome || "Unknown"}</strong><MarkdownText>{item.summary || item.rawText}</MarkdownText><small>{minutesLabel(item.minutes)}{item.blocker ? ` · Blocker: ${item.blocker}` : ""}</small></div>) : <small>Not recorded</small>}</div>
                     </div>
                   );
                 })}
+                {updates.filter((item) => !plan.baselineBlocks.some((block) => block.title.toLowerCase() === item.taskTitle?.toLowerCase())).length > 0 && <div className="unmatched-updates"><strong>Other recorded updates</strong>{updates.filter((item) => !plan.baselineBlocks.some((block) => block.title.toLowerCase() === item.taskTitle?.toLowerCase())).map((item) => <div key={item.id}><strong>{item.taskTitle || "Unclassified"}</strong><MarkdownText>{item.summary || item.rawText}</MarkdownText></div>)}</div>}
               </section>
               <section className="journal-card">
                 <span className="eyebrow">YOUR DAY, IN YOUR WORDS</span>
@@ -864,6 +938,7 @@ function ReviewView({
                   onChange={(event) => setJournal(event.target.value)}
                   placeholder="Generate a draft from your confirmed updates, then edit it in your own words."
                 />
+                {journal.trim() && <div className="journal-preview"><strong>Formatted preview</strong><MarkdownText>{journal}</MarkdownText></div>}
                 <div className="actions">
                   <button
                     className="secondary-button"
@@ -877,11 +952,12 @@ function ReviewView({
                     )}
                     {writing ? "Writing locally…" : "Generate draft"}
                   </button>
-                  <button className="primary-button" onClick={saveJournal}>
+                  <button className="primary-button" onClick={saveJournal} disabled={saving}>
                     <Check size={17} />
-                    Save journal
+                    {saving ? "Saving…" : "Save journal"}
                   </button>
                 </div>
+                {feedback && <p className="inline-notice" role="status">{feedback}</p>}
               </section>
             </div>
           </>
@@ -892,7 +968,17 @@ function ReviewView({
 }
 
 function InsightsView({ plans }) {
-  const days = plans.slice(-30);
+  const [demo, setDemo] = useState(false);
+  const demoPlans = useMemo(() => Array.from({ length: 84 }, (_, index) => {
+    const date = dateForInput(index - 83);
+    const count = [0, 1, 2, 3, 2, 1, 0][index % 7];
+    return { date, baselineBlocks: Array.from({ length: 3 + index % 3 }, () => ({})), updates: Array.from({ length: count }, (_, i) => ({ outcome: i === 0 ? "Completed" : "In Progress", minutes: 30 + 15 * i })), journal: index % 3 === 0 ? "Example journal entry" : "" };
+  }), []);
+  const sourcePlans = demo ? demoPlans : plans;
+  const days = sourcePlans.slice(-30);
+  const maxCount = Math.max(1, ...days.flatMap((item) => [item.baselineBlocks?.length ?? 0, item.updates?.length ?? 0]));
+  const recentDates = Array.from({ length: 84 }, (_, index) => dateForInput(index - 83));
+  const byDate = new Map(sourcePlans.map((item) => [item.date, item]));
   const totalUpdates = days.reduce(
     (sum, plan) => sum + (plan.updates?.length ?? 0),
     0,
@@ -926,6 +1012,7 @@ function InsightsView({ plans }) {
         </div>
       </header>
       <section className="single-layout">
+        <div className="demo-toolbar"><div><strong>{demo ? "Sample data preview" : "Your local records"}</strong><p>{demo ? "Illustrative data only. It is not saved or mixed with your own plans." : "Try sample data to explore the dashboard without changing your records."}</p></div><button className="secondary-button" onClick={() => setDemo(!demo)}>{demo ? "Show my records" : "View sample data"}</button></div>
         <div className="metrics-grid">
           <Metric label="Days planned" value={days.length} />
           <Metric label="Recorded updates" value={totalUpdates} />
@@ -933,10 +1020,19 @@ function InsightsView({ plans }) {
           <Metric label="Completed updates" value={completed} />
           <Metric label="Journal entries" value={journalDays} />
         </div>
+        <section className="chart-card activity-tracker">
+          <span className="eyebrow">LAST 12 WEEKS / ACTIVITY</span>
+          <h2>Daily check-in tracker</h2>
+          <p className="empty-copy">Each square represents a day; darker green means more recorded updates. An empty square means no update recorded.</p>
+          <div className="tracker-grid">{recentDates.map((day) => { const count = byDate.get(day)?.updates?.length ?? 0; return <div key={day} className={`tracker-cell level-${Math.min(count, 3)}`} title={`${day}: ${count} recorded update${count === 1 ? "" : "s"}`} aria-label={`${day}: ${count} recorded updates`} />; })}</div>
+          <div className="tracker-legend">Fewer <i className="level-0" /><i className="level-1" /><i className="level-2" /><i className="level-3" /> More updates</div>
+        </section>
         <section className="chart-card">
           <div>
             <span className="eyebrow">LAST 30 SAVED DAYS</span>
-            <h2>Planned activity and recorded updates</h2>
+            <h2>Plans and updates by date</h2>
+            <p className="empty-copy">Counts show planned blocks and recorded updates; they are not a completion rate.</p>
+            <div className="chart-legend"><span><i className="planned-key" /> Planned blocks</span><span><i className="updates-key" /> Recorded updates</span></div>
           </div>
           {days.length === 0 ? (
             <p className="empty-copy">
@@ -950,16 +1046,16 @@ function InsightsView({ plans }) {
                   <div className="bar-track">
                     <i
                       style={{
-                        width: `${Math.min(100, (plan.baselineBlocks?.length ?? 0) * 12)}%`,
+                        width: `${(plan.baselineBlocks?.length ?? 0) / maxCount * 100}%`,
                       }}
                     />
                     <b
                       style={{
-                        width: `${Math.min(100, (plan.updates?.length ?? 0) * 20)}%`,
+                        width: `${(plan.updates?.length ?? 0) / maxCount * 100}%`,
                       }}
                     />
                   </div>
-                  <small>{plan.updates?.length ?? 0} updates</small>
+                  <small>{plan.baselineBlocks?.length ?? 0} blocks · {plan.updates?.length ?? 0} updates</small>
                 </div>
               ))}
             </div>
@@ -1025,11 +1121,8 @@ function ModelLogView() {
             <div className="log-list">
               {logs.map((entry) => {
                 const open = expanded === entry.id;
-                const input =
-                  entry.input?.messages
-                    ?.map((message) => `${message.role}: ${message.content}`)
-                    .join("\n\n") ?? JSON.stringify(entry.input, null, 2);
-                const output = entry.error
+                const input = open && JSON.stringify(entry.input, null, 2);
+                const output = !open ? "" : entry.error
                   ? `Error: ${entry.error}`
                   : JSON.stringify(entry.response, null, 2);
                 return (
@@ -1041,7 +1134,7 @@ function ModelLogView() {
                       <span
                         className={entry.error ? "log-error-dot" : "status-dot"}
                       />
-                      <strong>{entry.route}</strong>
+                      <strong>{entry.title || (entry.input?.messages?.[0]?.content?.startsWith("Extract a factual") ? "Activity update analysis" : entry.input?.messages?.[0]?.content?.startsWith("Create one illustrative") ? "Sample day plan" : entry.input?.messages?.[0]?.content?.startsWith("Write a concise") ? "Journal draft" : entry.input?.messages?.[0]?.content?.startsWith("You are Zoro") ? "Plan review" : "Local model request")}</strong>
                       <time>
                         {new Date(entry.completedAt).toLocaleString()}
                       </time>
@@ -1059,7 +1152,8 @@ function ModelLogView() {
                               ? "LOCAL ERROR"
                               : "RESPONSE FROM OLLAMA"}
                           </span>
-                          <pre>{output}</pre>
+                          {modelOutputMarkdown(entry) && <><span>FORMATTED MODEL RESPONSE</span><MarkdownText>{modelOutputMarkdown(entry)}</MarkdownText></>}
+                          <span>RAW RESPONSE</span><pre>{output}</pre>
                         </div>
                       </div>
                     )}
